@@ -71,6 +71,16 @@ Type: `boolean`
 
 Use class components instead of functional component.
 
+### componentTest
+
+Alias(es): cy
+
+Default: `false`
+
+Type: `boolean`
+
+Create a Cypress component test file for the component. https://docs.cypress.io/guides/component-testing/introduction
+
 ### directory
 
 Alias(es): dir

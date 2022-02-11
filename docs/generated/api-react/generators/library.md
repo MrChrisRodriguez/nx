@@ -53,6 +53,16 @@ Type: `string`
 
 Library name
 
+### addCypress
+
+Alias(es): cy
+
+Default: `false`
+
+Type: `boolean`
+
+Add Cypress component testing to project. https://cypress.io
+
 ### appProject
 
 Alias(es): a

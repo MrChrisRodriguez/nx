@@ -863,6 +863,16 @@
             "name": "cypress-project generator",
             "id": "cypress-project",
             "file": "generated/api-cypress/generators/cypress-project"
+          },
+          {
+            "name": "cypress-component-project generator",
+            "id": "cypress-component-project",
+            "file": "generated/api-cypress/generators/cypress-component-project"
+          },
+          {
+            "name": "convert cypress project to v10",
+            "id": "convert-cypress-project-to-v10",
+            "file": "generated/api-cypress/generators/convert-cypress-ten"
           }
         ]
       },

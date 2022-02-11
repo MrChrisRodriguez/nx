@@ -57,6 +57,16 @@ Type: `string`
 
 The name of the project.
 
+### componentTest
+
+Alias(es): cy
+
+Default: `false`
+
+Type: `boolean`
+
+Create a Cypress component test file for the component. https://docs.cypress.io/guides/component-testing/introduction
+
 ### directory
 
 Alias(es): dir
