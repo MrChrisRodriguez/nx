@@ -1,4 +1,5 @@
 import { addOrUpdateConfigProperties } from './update-config';
+import { componentDevServer } from '@nrwl/cypress/plugins/react';
 
 describe('Update Cypress Config', () => {
   let configContent = `
@@ -7,6 +8,7 @@ import { componentDevServer } from '@nrwl/cypress/plugins/next';
 
 
 export default defineConfig({
+  baseUrl: 'blah its me',
   component: {
     devServer: componentDevServer('tsconfig.cy.json', 'babel'),
     pluginsFile: false,
@@ -29,7 +31,7 @@ export default defineConfig({
     videosFolder: '../../dist/cypress/apps/myapp4299814-e2e/videos',
     screenshotsFolder: '../../dist/cypress/apps/myapp4299814-e2e/screenshots',
     chromeWebSecurity: false,
-  },
+  }
 });
   `;
 
@@ -44,7 +46,17 @@ export default defineConfig({
   describe('Properties', () => {
     it('should add a property', () => {
       const actual = addOrUpdateConfigProperties(configContent, {
-        baseUrl: 'http://localhost:8080',
+        blah: 'i am a top level property',
+        baseUrl: 'http://localhost:1234',
+        component: {
+          fixturesFolder: 'cypress/fixtures/cool',
+          // devServer: () => componentDevServer('tsconfig.cy.json', 'swc'),
+          // @ts-ignore
+          blah: 'i am a random property',
+        },
+        e2e: {
+          video: false,
+        },
       });
 
       expect(actual).toMatchSnapshot();

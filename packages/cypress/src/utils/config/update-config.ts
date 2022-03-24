@@ -4,15 +4,12 @@ import {
   ScriptTarget,
   transform,
 } from 'typescript';
-import {
-  CypressConfigWithoutDevServer,
-  mergeCypressConfigs,
-} from './transformers';
+import { CypressConfig, mergeCypressConfigs } from './transformers';
 
 // TODO(caleb): handle devserver in config
 export function addOrUpdateConfigProperties(
   configContent: string,
-  config: CypressConfigWithoutDevServer,
+  config: CypressConfig,
   overwrite: boolean = false
 ) {
   const sourceFile = createSourceFile(
@@ -31,6 +28,6 @@ export function addOrUpdateConfigProperties(
 
 export function removeConfigProperties() {}
 
-export function addConfigImport() {}
-
-export function removeConfigImport() {}
+// export function addConfigImport() {}
+//
+// export function removeConfigImport() {}

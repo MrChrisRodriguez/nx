@@ -1,5 +1,6 @@
 import {
   CallExpression,
+  isCallExpression,
   isExportAssignment,
   isNumericLiteral,
   isObjectLiteralExpression,
@@ -18,97 +19,20 @@ import {
 } from 'typescript';
 import { defineConfig } from 'cypress';
 
-export type CypressConfigWithoutDevServer = Omit<
-  Parameters<typeof defineConfig>[0],
-  'component'
-> & {
-  component?: Omit<
-    Parameters<typeof defineConfig>[0]['component'],
-    'devServer'
-  >;
-};
-
-function mergedCypressConfigurations(
-  context: TransformationContext,
-  configNode: ObjectLiteralExpression,
-  newConfig: CypressConfigWithoutDevServer
-) {
-  const { component: newComponent, e2e: newE2E, ...newTopLevel } = newConfig;
-  // TODO can't JSON parse this. as it's not JSON. how to revive this object?
-  // can I just traverse the object and replace the values if found?
-  // const logNode = (node) => {
-  //   if (isPropertyAssignment(node)) {
-  //     console.log(node.getText());
-  //   }
-  //   return visitEachChild(node, logNode, context);
-  // };
-  // visitEachChild(configNode, logNode, context);
-
-  // const e2eNode = configNode.properties.find(
-  //   (p) => p.name.getText() === 'e2e'
-  // ) as PropertyAssignment;
-  // const componentNode = configNode.properties.find(
-  //   (p) => p.name.getText() === 'component'
-  // ) as PropertyAssignment;
-  // const topLevelNode = configNode.properties.filter(
-  //   (p) => p.name.getText() !== 'e2e' && p.name.getText() !== 'component'
-  // ) as PropertyAssignment[];
-
-  const oldConfig = getConfigAsObject(configNode);
-
-  const {
-    component: existingComponent,
-    e2e: existingE2E,
-    ...parsedTopLevel
-  }: CypressConfigWithoutDevServer = oldConfig;
-  const mergedConfig: CypressConfigWithoutDevServer = {
-    ...parsedTopLevel,
-    ...newTopLevel,
-  };
-
-  if (newComponent || existingComponent) {
-    mergedConfig['component'] = {
-      ...(existingComponent || {}),
-      ...(newComponent || {}),
-    };
-  }
-  if (newE2E || existingE2E) {
-    mergedConfig['e2e'] = {
-      ...(existingE2E || {}),
-      ...(newE2E || {}),
-    };
-  }
-
-  return mergedConfig;
-}
+export type CypressConfig = Parameters<typeof defineConfig>[0];
 
 export function mergeCypressConfigs(
-  newConfig: CypressConfigWithoutDevServer,
+  newConfig: CypressConfig,
   overwrite: boolean
 ): TransformerFactory<SourceFile> {
   return (context: TransformationContext) => {
     return (sourceFile: SourceFile) => {
       const visitor: Visitor = (node: Node): Node => {
-        // TODO(caleb): only get the default export
         if (isExportAssignment(node)) {
           const callExpression = node.expression as CallExpression;
 
-          const configNode = callExpression
+          const rootConfigNode = callExpression
             .arguments[0] as ObjectLiteralExpression;
-
-          // read in existing configuration,
-          // somehow I need to still keep properties like
-          // the devServer which is a function and not serializable.
-          let config;
-          if (overwrite) {
-            config = newConfig;
-          } else {
-            config = mergedCypressConfigurations(
-              context,
-              configNode,
-              newConfig
-            );
-          }
 
           return context.factory.updateExportAssignment(
             node,
@@ -118,15 +42,9 @@ export function mergeCypressConfigs(
               callExpression,
               callExpression.expression,
               callExpression.typeArguments,
-              [
-                context.factory.updateObjectLiteralExpression(
-                  configNode,
-                  // TODO(caleb): null check and create an empty object if null
-                  Object.entries(config).map(([key, value]) =>
-                    createAssignment(context, key, value)
-                  )
-                ),
-              ]
+              overwrite
+                ? []
+                : [visitRootConfigNode(context, rootConfigNode, newConfig)] // TODO(caleb): update this node;
             )
           );
         }
@@ -139,101 +57,201 @@ export function mergeCypressConfigs(
   };
 }
 
-function createAssignment(
+export function createExpressionFromFunction(
   context: TransformationContext,
-  propertyName: string,
+  fn: any
+): CallExpression {
+  if (typeof fn !== 'function') {
+    console.log('function type was not provided');
+    return;
+  }
+  const strFn = fn.toString();
+  const fnArgMatcher = /\([\s\S)]+?(?=\))/g; // TODO(caleb): can I get a non matching capture group for the first '('? 🤔
+  const fnNameMatcher = /\b\S+(?=\()/g;
+  const fnName = strFn.match(fnNameMatcher)[0];
+  const fnArgs = strFn
+    .match(fnArgMatcher)
+    .split(',')
+    .map((s) => {
+      // TODO(caleb): parse args into correct types.
+      return s.trim();
+    });
+
+  return context.factory.createCallExpression(
+    context.factory.createIdentifier(fnName),
+    undefined,
+    fnArgs.map((arg) => {
+      switch (typeof arg) {
+        case 'string':
+          return context.factory.createStringLiteral(arg, true);
+        case 'number':
+          return context.factory.createNumericLiteral(arg);
+        case 'boolean':
+          return arg
+            ? context.factory.createTrue()
+            : context.factory.createFalse();
+      }
+    })
+  );
+}
+
+function getValueByPath(config: CypressConfig, path: string[]): unknown {
+  return path.reduce((acc, key) => {
+    return acc?.[key];
+  }, config);
+}
+
+function updateChildObjectLiteral(
+  context: TransformationContext,
+  objectNode: ObjectLiteralExpression,
+  path: string[],
+  config: CypressConfig
+): ObjectLiteralExpression {
+  // TODO(caleb): get all properties from the object and mark them as updated or not updated. and at the end make sure to update all properties that haven't been updated yet. because they need to be added
+  const propertiesToAdd = new Map<string, string>();
+  const baseConfig = getValueByPath(config, path) as Record<string, any>;
+  for (const baseConfigKey in baseConfig) {
+    propertiesToAdd.set(
+      [...path, baseConfigKey].join('.'),
+      baseConfig[baseConfigKey]
+    );
+  }
+
+  const updatedObject = visitEachChild(
+    objectNode,
+    (node: Node) => {
+      if (isPropertyAssignment(node)) {
+        const propertyPath = [...path, node.name.getText()];
+        propertiesToAdd.delete(propertyPath.join('.'));
+        const value = getValueByPath(config, propertyPath);
+        console.log(value, path);
+        if (value !== undefined) {
+          // false is a valid value!
+          return updatePropertyAssignment(context, node, value);
+        }
+      }
+      return node;
+    },
+    context
+  );
+
+  if (propertiesToAdd.size === 0) {
+    return updatedObject;
+  }
+
+  const extraProperties = Array.from(propertiesToAdd.entries()).map(
+    ([key, value]) => {
+      const prop = context.factory.createPropertyAssignment(
+        key.split('.').pop(),
+        context.factory.createFalse() // temp value
+      );
+      return updatePropertyAssignment(context, prop, value);
+    }
+  );
+
+  return context.factory.createObjectLiteralExpression(
+    [...updatedObject.properties, ...extraProperties],
+    true
+  );
+}
+
+function updatePropertyAssignment(
+  context: TransformationContext,
+  property: PropertyAssignment,
   value: unknown
 ): PropertyAssignment {
   switch (typeof value) {
-    case 'boolean':
-      return context.factory.createPropertyAssignment(
-        context.factory.createIdentifier(propertyName),
-        value ? context.factory.createTrue() : context.factory.createFalse()
-      );
     case 'number':
       return context.factory.createPropertyAssignment(
-        context.factory.createIdentifier(propertyName),
+        property.name,
         context.factory.createNumericLiteral(value)
       );
-
     case 'string':
       return context.factory.createPropertyAssignment(
-        context.factory.createIdentifier(propertyName),
+        property.name,
         context.factory.createStringLiteral(value, true)
       );
-
-    case 'object':
+    case 'boolean':
       return context.factory.createPropertyAssignment(
-        context.factory.createIdentifier(propertyName),
-        context.factory.createObjectLiteralExpression(
-          Object.entries(value).map(([nestedKey, nestedValue]) => {
-            return createAssignment(context, nestedKey, nestedValue);
-          }),
-          true
-        )
+        property.name,
+        value ? context.factory.createTrue() : context.factory.createFalse()
       );
-    default:
-      throw new Error(
-        `Unsupported type ${typeof value}. Only Boolean, Number, and String are supported.`
+    case 'function':
+      return context.factory.createPropertyAssignment(
+        property.name,
+        createExpressionFromFunction(context, value)
       );
   }
 }
 
-function getConfigAsObject(objectNode: ObjectLiteralExpression) {
-  const oldConfig = {};
-  for (const prop of objectNode.properties) {
-    if (isPropertyAssignment(prop)) {
-      if (isStringLiteralLike(prop.initializer)) {
-        oldConfig[prop.name.getText()] = prop.initializer.text;
-      } else if (
-        // TODO(caleb): I don't see an isBoolean or isFalse,isTrue
-        prop.initializer.kind === SyntaxKind.FalseKeyword ||
-        prop.initializer.kind === SyntaxKind.TrueKeyword
-      ) {
-        oldConfig[prop.name.getText()] =
-          prop.initializer.getText().toLowerCase() === 'true';
-      } else if (isNumericLiteral(prop.initializer)) {
-        oldConfig[prop.name.getText()] = Number(prop.initializer.getText());
-      } else if (isObjectLiteralExpression(prop.initializer)) {
-        oldConfig[prop.name.getText()] = getConfigAsObject(
-          prop.initializer as ObjectLiteralExpression
-        );
-      } else {
-        // TODO(caleb): special handle devServer
-        console.log(
-          'unknown kind',
-          prop.initializer.kind,
-          prop.initializer.getText()
-        );
-      }
-    } else {
-      console.log('is not property assignment', prop.getText());
+function visitRootConfigNode(
+  context: TransformationContext,
+  rootNode: ObjectLiteralExpression,
+  newConfig: CypressConfig
+): ObjectLiteralExpression {
+  const propertyMap = new Map<string, any>();
+  for (const item in newConfig) {
+    if (typeof newConfig[item] !== 'object') {
+      propertyMap.set(item, newConfig[item]);
     }
   }
-  return oldConfig;
+
+  const updateAssignments = (node: Node) => {
+    if (isPropertyAssignment(node)) {
+      if (isObjectLiteralExpression(node.initializer)) {
+        return context.factory.updatePropertyAssignment(
+          node,
+          node.name,
+          updateChildObjectLiteral(
+            context,
+            node.initializer,
+            [node.name.getText()],
+            newConfig
+          )
+        );
+      } else if (
+        isNumericLiteral(node.initializer) ||
+        isStringLiteralLike(node.initializer) ||
+        isBooleanLiteral(node.initializer) ||
+        isCallExpression(node.initializer)
+      ) {
+        const value = getValueByPath(newConfig, [node.name.getText()]);
+        if (value) {
+          propertyMap.delete(node.name.getText());
+          return updatePropertyAssignment(context, node, value);
+        }
+      }
+    }
+    return node;
+  };
+
+  const updatedConfig = visitEachChild(rootNode, updateAssignments, context);
+  // if newConfig still have properties, then add them to the root node.
+
+  if (propertyMap.size === 0) {
+    return updatedConfig;
+  }
+
+  return context.factory.updateObjectLiteralExpression(updatedConfig, [
+    ...Array.from(propertyMap.entries()).map(([key, value]) => {
+      const prop = context.factory.createPropertyAssignment(
+        key,
+        context.factory.createFalse() // temp value
+      );
+      return updatePropertyAssignment(context, prop, value);
+    }),
+    ...updatedConfig.properties,
+  ]);
 }
 
-
-export function createPropertyWithExpression(context: TransformationContext,
-  propertyName: string,
-  expressionName: string,
-  expressionArgs: Array<string | boolean | number>
-): PropertyAssignment {
-  return context.factory.createPropertyAssignment(
-    context.factory.createIdentifier(propertyName),
-    context.factory.createCallExpression(
-      context.factory.createIdentifier(expressionName),
-      undefined,
-      expressionArgs.map(arg => {
-        switch (typeof arg) {
-          case 'string':
-            return context.factory.createStringLiteral(arg);
-          case 'number':
-            return context.factory.createNumericLiteral(arg);
-          case 'boolean':
-            return arg ? context.factory.createTrue() : context.factory.createFalse()
-        }
-      })
-    )
-  )
+function isBooleanLiteral(node: Node) {
+  console.log(
+    node.kind === SyntaxKind.TrueKeyword ||
+      node.kind === SyntaxKind.FalseKeyword,
+    node.getText()
+  );
+  return (
+    node.kind === SyntaxKind.TrueKeyword ||
+    node.kind === SyntaxKind.FalseKeyword
+  );
 }

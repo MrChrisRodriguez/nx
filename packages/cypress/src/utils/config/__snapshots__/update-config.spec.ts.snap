@@ -4,17 +4,19 @@ exports[`Update Cypress Config Properties should add a property 1`] = `
 "import { defineConfig } from 'cypress';
 import { componentDevServer } from '@nrwl/cypress/plugins/next';
 export default defineConfig({
-    baseUrl: 'http://localhost:8080',
+    blah: 'i am a top level property',
+    baseUrl: 'http://localhost:1234',
     component: {
         devServer: componentDevServer('tsconfig.cy.json', 'babel'),
         pluginsFile: false,
         video: true,
         chromeWebSecurity: false,
-        fixturesFolder: 'cypress/fixtures',
+        fixturesFolder: 'cypress/fixtures/cool',
         specPattern: '**/*.cy.{js,jsx,ts,tsx}',
         supportFile: 'cypress/support/component.ts',
-        videosFolder: ''../../dist/cypress/apps/n/videos',
+        videosFolder: '../../dist/cypress/apps/n/videos',
         screenshotsFolder: '../../dist/cypress/apps/n/screenshots',
+        blah: 'i am a random property'
     },
     e2e: {
         fileServerFolder: '.',
@@ -23,7 +25,7 @@ export default defineConfig({
         supportFile: './src/support/e2e.ts',
         specPattern: '**/*.cy.{js,ts}',
         pluginsFile: false,
-        video: true,
+        video: false,
         videosFolder: '../../dist/cypress/apps/myapp4299814-e2e/videos',
         screenshotsFolder: '../../dist/cypress/apps/myapp4299814-e2e/screenshots',
         chromeWebSecurity: false,
