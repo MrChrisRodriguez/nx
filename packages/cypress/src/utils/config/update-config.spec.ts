@@ -35,14 +35,6 @@ export default defineConfig({
 });
   `;
 
-  describe('Imports', () => {
-    it('should add an import', () => {});
-
-    it('should remove an import', () => {});
-
-    it('should update an import', () => {});
-  });
-
   describe('Properties', () => {
     it('should add a property', () => {
       const actual = addOrUpdateConfigProperties(configContent, {
@@ -50,7 +42,7 @@ export default defineConfig({
         baseUrl: 'http://localhost:1234',
         component: {
           fixturesFolder: 'cypress/fixtures/cool',
-          // devServer: () => componentDevServer('tsconfig.cy.json', 'swc'),
+          devServer: componentDevServer('tsconfig.cy.json', 'swc'),
           // @ts-ignore
           blah: 'i am a random property',
         },

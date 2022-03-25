@@ -4,12 +4,15 @@ import {
   ScriptTarget,
   transform,
 } from 'typescript';
-import { CypressConfig, mergeCypressConfigs } from './transformers';
+import {
+  CypressConfigPt2,
+  mergeCypressConfigs,
+} from './add-update-property-transformer';
 
 // TODO(caleb): handle devserver in config
 export function addOrUpdateConfigProperties(
   configContent: string,
-  config: CypressConfig,
+  config: CypressConfigPt2,
   overwrite: boolean = false
 ) {
   const sourceFile = createSourceFile(
